@@ -52,8 +52,9 @@ func New(c Config) http.Handler {
 			r.Header.Set("User-Agent", "")
 		}
 
-		// remove cookies
+		// remove headers
 		r.Header.Del("Cookie")
+		r.Header.Del("Accept-Encoding")
 	}
 
 	modifyResponse := func(w *http.Response) error {
