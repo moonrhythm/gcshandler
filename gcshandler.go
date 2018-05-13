@@ -41,11 +41,10 @@ func New(c Config) http.Handler {
 	}
 
 	director := func(r *http.Request) {
+		r.Host = gcsHost
 		r.URL.Scheme = "https"
 		r.URL.Host = gcsHost
-		r.Host = gcsHost
-		p := strings.TrimPrefix(r.URL.Path, "/")
-		r.URL.Path = c.BasePath + p
+		r.URL.Path = c.BasePath + "/" + strings.TrimPrefix(r.URL.Path, "/")
 
 		// prevent default user-agent
 		if _, ok := r.Header["User-Agent"]; !ok {
