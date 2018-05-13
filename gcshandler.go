@@ -13,7 +13,6 @@ type Config struct {
 	Bucket   string
 	BasePath string
 	Fallback http.Handler
-	// TODO: add cache to cache response to storage/memory
 }
 
 const (
