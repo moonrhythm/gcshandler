@@ -10,9 +10,10 @@ import (
 
 // Config is gcshandler config
 type Config struct {
-	Bucket   string
-	BasePath string
-	Fallback http.Handler
+	Bucket         string
+	BasePath       string
+	Fallback       http.Handler
+	ModifyResponse func(*http.Response) error
 }
 
 const gcsHost = "storage.googleapis.com"
@@ -27,6 +28,11 @@ func New(c Config) http.Handler {
 	// short-circit no bucket
 	if c.Bucket == "" {
 		return c.Fallback
+	}
+
+	// default ModifyResponse
+	if c.ModifyResponse == nil {
+		c.ModifyResponse = func(*http.Response) error { return nil }
 	}
 
 	// normalize base path
@@ -70,7 +76,7 @@ func New(c Config) http.Handler {
 		w.Header.Del("Server")
 		w.Header.Del("Age")
 
-		return nil
+		return c.ModifyResponse(w)
 	}
 
 	rev := &httputil.ReverseProxy{
