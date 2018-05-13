@@ -33,6 +33,7 @@ func New(c Config) http.Handler {
 	if !strings.HasPrefix(c.BasePath, "/") {
 		c.BasePath = "/" + c.BasePath
 	}
+	c.BasePath = strings.TrimSuffix(c.BasePath, "/")
 	c.BasePath = "/" + c.Bucket + c.BasePath
 
 	// setup reverse proxy
