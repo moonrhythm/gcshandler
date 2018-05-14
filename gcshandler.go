@@ -1,8 +1,6 @@
 package gcshandler
 
 import (
-	"bytes"
-	"io"
 	"net/http"
 	"net/http/httputil"
 	"strings"
@@ -86,51 +84,57 @@ func New(c Config) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nw := &bufferResponseWriter{}
+		nw := &responseWriter{
+			ResponseWriter: w,
+		}
 		rev.ServeHTTP(nw, r)
 
-		if nw.statusCode >= 400 {
+		if nw.fallback {
 			c.Fallback.ServeHTTP(w, r)
-			return
 		}
-
-		h := nw.Header()
-		hh := w.Header()
-		for k, v := range h {
-			for _, vv := range v {
-				hh.Add(k, vv)
-			}
-		}
-		w.WriteHeader(nw.statusCode)
-		io.Copy(w, &nw.buf)
 	})
 }
 
-type bufferResponseWriter struct {
-	buf         bytes.Buffer
+type responseWriter struct {
+	http.ResponseWriter
 	wroteHeader bool
-	statusCode  int
+	fallback    bool
 	header      http.Header
 }
 
-func (w *bufferResponseWriter) WriteHeader(code int) {
+func (w *responseWriter) WriteHeader(code int) {
 	if w.wroteHeader {
 		return
 	}
 	w.wroteHeader = true
-	w.statusCode = code
+
+	if code >= 400 {
+		w.fallback = true
+		return
+	}
+
+	h := w.ResponseWriter.Header()
+	for k, v := range w.header {
+		for _, vv := range v {
+			h.Add(k, vv)
+		}
+	}
+	w.ResponseWriter.WriteHeader(code)
 }
 
-func (w *bufferResponseWriter) Header() http.Header {
+func (w *responseWriter) Header() http.Header {
 	if w.header == nil {
 		w.header = make(http.Header)
 	}
 	return w.header
 }
 
-func (w *bufferResponseWriter) Write(p []byte) (int, error) {
+func (w *responseWriter) Write(p []byte) (int, error) {
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)
 	}
-	return w.buf.Write(p)
+	if w.fallback {
+		return len(p), nil
+	}
+	return w.ResponseWriter.Write(p)
 }
