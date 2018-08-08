@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"cloud.google.com/go/storage"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 )
 
@@ -43,8 +41,7 @@ func New(c Config) http.Handler {
 
 	if c.Client == nil {
 		// use anonymous account
-		cred := &google.Credentials{TokenSource: oauth2.StaticTokenSource(&oauth2.Token{})}
-		c.Client, _ = storage.NewClient(ctx, option.WithCredentials(cred))
+		c.Client, _ = storage.NewClient(ctx, option.WithoutAuthentication())
 	}
 
 	if c.Client == nil {
