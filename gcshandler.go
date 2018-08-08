@@ -2,13 +2,15 @@ package gcshandler
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"path"
 	"strings"
 
 	"cloud.google.com/go/storage"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/option"
 )
 
 // Config is gcshandler config
@@ -32,8 +34,21 @@ func New(c Config) http.Handler {
 		return c.Fallback
 	}
 
+	ctx := context.Background()
+
 	if c.Client == nil {
-		c.Client, _ = storage.NewClient(context.Background())
+		// use default application credential
+		c.Client, _ = storage.NewClient(ctx)
+	}
+
+	if c.Client == nil {
+		// use anonymous account
+		cred := &google.Credentials{TokenSource: oauth2.StaticTokenSource(&oauth2.Token{})}
+		c.Client, _ = storage.NewClient(ctx, option.WithCredentials(cred))
+	}
+
+	if c.Client == nil {
+		panic("gcshandler: can not init storage client")
 	}
 
 	// normalize base path
@@ -47,7 +62,6 @@ func New(c Config) http.Handler {
 
 		reader, err := obj.NewReader(r.Context())
 		if err != nil {
-			fmt.Println(err)
 			c.Fallback.ServeHTTP(w, r)
 			return
 		}
