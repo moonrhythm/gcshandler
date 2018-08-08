@@ -20,8 +20,6 @@ type Config struct {
 	Fallback     http.Handler
 }
 
-const gcsHost = "storage.googleapis.com"
-
 // New creates new gcshandler
 func New(c Config) http.Handler {
 	// default fallback
