@@ -8,13 +8,11 @@
 ## Example
 
 ```go
-m.Handle("/-/", http.StripPrefix("/-", cacheControl(gcshandler.New(gcshandler.Config{
-    Bucket:   "acoshift-test",
-    BasePath: "/folder",
+m.Handle("/-/", http.StripPrefix("/-", gcshandler.New(gcshandler.Config{
+    Client: nil, // *storage.Client
+    Bucket: "acoshift-test",
+    BasePath: "folder",
+    CacheControl: "public, max-age=7200",
     Fallback: webstatic.New("assets"), // github.com/acoshift/webstatic
-    ModifyResponse: func(w *http.Response) error {
-        w.Header.Del("Cache-Control")
-        return nil
-    },
-}))))
+})))
 ```
