@@ -80,6 +80,22 @@ func TestHandlerSuccess(t *testing.T) {
 		assert.Equal(t, 200, w.Code)
 		assert.False(t, fallback.called)
 	})
+
+	t.Run("CacheControl", func(t *testing.T) {
+		fallback := fallbackHandler{}
+		h := gcshandler.New(gcshandler.Config{
+			Bucket:       bucket,
+			BasePath:     "/",
+			Fallback:     &fallback,
+			CacheControl: "public, max-age=123",
+		})
+
+		r := httptest.NewRequest(http.MethodGet, "http://localhost/test", nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		assert.Equal(t, 200, w.Code)
+		assert.Equal(t, "public, max-age=123", w.Header().Get("Cache-Control"))
+	})
 }
 
 func TestHandlerNotFound(t *testing.T) {

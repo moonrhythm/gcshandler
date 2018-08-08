@@ -1,17 +1,23 @@
 package gcshandler
 
 import (
+	"context"
+	"fmt"
+	"io"
 	"net/http"
-	"net/http/httputil"
+	"path"
 	"strings"
+
+	"cloud.google.com/go/storage"
 )
 
 // Config is gcshandler config
 type Config struct {
-	Bucket         string
-	BasePath       string
-	Fallback       http.Handler
-	ModifyResponse func(*http.Response) error
+	Client       *storage.Client
+	CacheControl string
+	Bucket       string
+	BasePath     string
+	Fallback     http.Handler
 }
 
 const gcsHost = "storage.googleapis.com"
@@ -28,113 +34,38 @@ func New(c Config) http.Handler {
 		return c.Fallback
 	}
 
-	// default ModifyResponse
-	if c.ModifyResponse == nil {
-		c.ModifyResponse = func(*http.Response) error { return nil }
+	if c.Client == nil {
+		c.Client, _ = storage.NewClient(context.Background())
 	}
 
 	// normalize base path
-	if !strings.HasPrefix(c.BasePath, "/") {
-		c.BasePath = "/" + c.BasePath
-	}
+	c.BasePath = strings.TrimPrefix(c.BasePath, "/")
 	c.BasePath = strings.TrimSuffix(c.BasePath, "/")
-	c.BasePath = "/" + c.Bucket + c.BasePath
 
-	// setup reverse proxy
-	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-	}
-
-	director := func(r *http.Request) {
-		r.Host = gcsHost
-		r.URL.Scheme = "https"
-		r.URL.Host = gcsHost
-		r.URL.Path = c.BasePath + "/" + strings.TrimPrefix(r.URL.Path, "/")
-
-		// prevent default user-agent
-		if _, ok := r.Header["User-Agent"]; !ok {
-			r.Header.Set("User-Agent", "")
-		}
-
-		// remove headers
-		r.Header.Del("Cookie")
-		r.Header.Del("Accept-Encoding")
-	}
-
-	modifyResponse := func(w *http.Response) error {
-		w.Header.Del("x-goog-generation")
-		w.Header.Del("x-goog-metageneration")
-		w.Header.Del("x-goog-stored-content-encoding")
-		w.Header.Del("x-goog-stored-content-length")
-		w.Header.Del("x-goog-hash")
-		w.Header.Del("x-goog-storage-class")
-		w.Header.Del("x-goog-meta-goog-reserved-file-mtime")
-		w.Header.Del("x-guploader-uploadid")
-		w.Header.Del("Alt-Svc")
-		w.Header.Del("Server")
-		w.Header.Del("Age")
-
-		return c.ModifyResponse(w)
-	}
-
-	rev := &httputil.ReverseProxy{
-		Director:       director,
-		Transport:      transport,
-		ModifyResponse: modifyResponse,
-	}
+	bucket := c.Client.Bucket(c.Bucket)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nw := &responseWriter{
-			ResponseWriter: w,
-		}
-		rev.ServeHTTP(nw, r)
+		obj := bucket.Object(strings.TrimPrefix(path.Join(c.BasePath, r.URL.Path), "/"))
 
-		if nw.fallback {
+		reader, err := obj.NewReader(r.Context())
+		if err != nil {
+			fmt.Println(err)
 			c.Fallback.ServeHTTP(w, r)
+			return
 		}
+		defer reader.Close()
+
+		h := w.Header()
+		if v := reader.ContentType(); v != "" {
+			h.Set("Content-Type", v)
+		}
+
+		if c.CacheControl != "" {
+			h.Set("Cache-Control", c.CacheControl)
+		} else if v := reader.CacheControl(); v != "" {
+			h.Set("Cache-Control", v)
+		}
+
+		io.Copy(w, reader)
 	})
-}
-
-type responseWriter struct {
-	http.ResponseWriter
-	wroteHeader bool
-	fallback    bool
-	header      http.Header
-}
-
-func (w *responseWriter) WriteHeader(code int) {
-	if w.wroteHeader {
-		return
-	}
-	w.wroteHeader = true
-
-	if code >= 400 {
-		w.fallback = true
-		return
-	}
-
-	h := w.ResponseWriter.Header()
-	for k, v := range w.header {
-		for _, vv := range v {
-			h.Add(k, vv)
-		}
-	}
-	w.ResponseWriter.WriteHeader(code)
-}
-
-func (w *responseWriter) Header() http.Header {
-	if w.header == nil {
-		w.header = make(http.Header)
-	}
-	return w.header
-}
-
-func (w *responseWriter) Write(p []byte) (int, error) {
-	if !w.wroteHeader {
-		w.WriteHeader(http.StatusOK)
-	}
-	if w.fallback {
-		return len(p), nil
-	}
-	return w.ResponseWriter.Write(p)
 }
