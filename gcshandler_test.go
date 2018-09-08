@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/acoshift/gcshandler"
+	"github.com/moonrhythm/gcshandler"
 	"github.com/stretchr/testify/assert"
 )
 
